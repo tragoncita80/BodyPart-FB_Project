@@ -12,65 +12,39 @@ Let $z_{full}$, $z_{upper}$, and $z_{lower}$ denote the latent representations o
 
 The additive consistency objective encourages the two body-part changes to reconstruct the full-body change:
 
-$$
-z_{full} - z_{neutral}
-\approx
-(z_{upper} - z_{neutral}) + (z_{lower} - z_{neutral})
-$$
+$z_{full} - z_{neutral} \approx (z_{upper} - z_{neutral}) + (z_{lower} - z_{neutral})$
 
 ### Additive consistency loss
 
-For a batch of full-body, upper-body, and lower-body latent vectors, the additive consistency loss is:
+The additive consistency loss combines a direction term and an orthogonality term:
 
-$$
-L_{add} = L_{direction} + 3 L_{ortho}
-$$
+$L_{add} = L_{direction} + 3L_{ortho}$
 
-The direction term aligns the full-body change from the neutral latent with the sum of the upper-body and lower-body changes:
+Define each latent change relative to the neutral representation:
 
-$$
-L_{direction}
-=
-1 - \operatorname{cosine\_similarity}
-\left(
-z_{full} - z_{neutral},
-(z_{upper} - z_{neutral}) + (z_{lower} - z_{neutral})
-\right)
-$$
+$\Delta z_{full}=z_{full}-z_{neutral}, \qquad \Delta z_{upper}=z_{upper}-z_{neutral}, \qquad \Delta z_{lower}=z_{lower}-z_{neutral}$
 
-The orthogonality term is computed per sample along the latent dimension (dim=-1), then averaged over the batch. Taking the absolute value penalizes alignment in either direction:
+The direction term aligns the full-body change with the sum of the upper-body and lower-body changes:
 
-$$
-L_{ortho}
-=
-\operatorname{mean}_{batch}
-\left(
-\left|
-\operatorname{cosine\_similarity}_{dim=-1}
-(z_{upper} - z_{neutral}, z_{lower} - z_{neutral})
-\right|
-\right)
-$$
+$L_{direction} = 1- \frac{ \Delta z_{full}\cdot(\Delta z_{upper}+\Delta z_{lower}) }{ \|\Delta z_{full}\|_2 \|\Delta z_{upper}+\Delta z_{lower}\|_2 }$
+
+The orthogonality term computes the absolute cosine similarity for each sample along the latent dimension (dim=-1), then averages across a batch of size B:
+
+$L_{ortho} = \frac{1}{B}\sum_{b=1}^{B} \left| \frac{ \Delta z_{upper}^{(b)}\cdot\Delta z_{lower}^{(b)} }{ \|\Delta z_{upper}^{(b)}\|_2 \|\Delta z_{lower}^{(b)}\|_2 } \right|$
 
 ### Dimensional consistency loss
 
-For the dimensional consistency experiment, the poster computes a separate centroid for the upper-only and lower-only latent vectors across the batch (mean(dim=0, keepdim=True)). It then sums squared deviations over the latent dimension (sum(dim=-1)) and averages over the batch:
+For a batch of B samples, the upper-only and lower-only latent centroids are computed across the batch:
 
-$$
-centroid_{uo} = z_{upper}.\operatorname{mean}(dim=0, keepdim=True)
-$$
-$$
-L_1 = (z_{upper} - centroid_{uo})^2.\operatorname{sum}(dim=-1).\operatorname{mean}()
-$$
+$c_{upper}=\frac{1}{B}\sum_{b=1}^{B}z_{upper}^{(b)}, \qquad c_{lower}=\frac{1}{B}\sum_{b=1}^{B}z_{lower}^{(b)}$
 
-$$
-centroid_{lo} = z_{lower}.\operatorname{mean}(dim=0, keepdim=True)
-$$
-$$
-L_2 = (z_{lower} - centroid_{lo})^2.\operatorname{sum}(dim=-1).\operatorname{mean}()
-$$
+The dimensional terms sum squared deviations over latent dimension d and then average across the batch:
 
-The poster compares the original model, the additive-loss model, and the additive-plus-dimensional-loss model. It lists L1 and L2 but does not specify their aggregate weighting in the combined objective.
+$L_1=\frac{1}{B}\sum_{b=1}^{B}\sum_{j=1}^{d} \left(z_{upper,j}^{(b)}-c_{upper,j}\right)^2$
+
+$L_2=\frac{1}{B}\sum_{b=1}^{B}\sum_{j=1}^{d} \left(z_{lower,j}^{(b)}-c_{lower,j}\right)^2$
+
+These equations correspond to mean(dim=0, keepdim=True) for each centroid and sum(dim=-1).mean() for each dimensional term. The poster compares the original model, the additive-loss model, and the additive-plus-dimensional-loss model. It lists L1 and L2 but does not specify their aggregate weighting in the combined objective.
 
 ## Data preparation
 
