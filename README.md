@@ -2,9 +2,9 @@
 
 ## Background
 
-A humanoid agent is conditioned on a latent vector $z$, which acts as a compact representation of behavioral intent. In the setup described in the project poster, proprioceptive observations from a 358-dimensional state space are passed through a backward mapping network to infer the corresponding latent representation.
+A MetaMotivo humanoid agent is conditioned on a latent vector $z$, which acts as a compact representation of behavioral intent. Proprioceptive observations from a 358-dimensional state space are passed through a backward mapping network to infer the corresponding latent representation.
 
-BodyPart-FB studies how this forward-backward representation can preserve useful whole-body behavior while making the upper and lower body components more independent.
+The projrct studies how this forward-backward representation can preserve useful whole-body behavior while making the upper and lower body components more independent.
 
 ## Method
 
@@ -47,8 +47,6 @@ The dimensional terms sum squared deviations over latent dimension d and then av
 $L_1=\frac{1}{B}\sum_{b=1}^{B}\sum_{j=1}^{d} \left(z_{upper,j}^{(b)}-c_{upper,j}\right)^2$
 
 $L_2=\frac{1}{B}\sum_{b=1}^{B}\sum_{j=1}^{d} \left(z_{lower,j}^{(b)}-c_{lower,j}\right)^2$
-
-These equations correspond to mean(dim=0, keepdim=True) for each centroid and sum(dim=-1).mean() for each dimensional term. The poster compares the original model, the additive-loss model, and the additive-plus-dimensional-loss model. It lists L1 and L2 but does not specify their aggregate weighting in the combined objective.
 
 ## Data preparation
 
