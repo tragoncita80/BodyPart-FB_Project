@@ -24,13 +24,17 @@ Define each latent change relative to the neutral representation:
 
 $\Delta z_{full}=z_{full}-z_{neutral}, \qquad \Delta z_{upper}=z_{upper}-z_{neutral}, \qquad \Delta z_{lower}=z_{lower}-z_{neutral}$
 
+The direction and orthogonality terms use cosine similarity. For vectors a and b, define:
+
+$c(a,b)=\frac{a\cdot b}{\sqrt{a\cdot a}\sqrt{b\cdot b}}$
+
 The direction term aligns the full-body change with the sum of the upper-body and lower-body changes:
 
-$L_{direction} = 1- \frac{ \Delta z_{full}\cdot(\Delta z_{upper}+\Delta z_{lower}) }{ \|\Delta z_{full}\|_2 \|\Delta z_{upper}+\Delta z_{lower}\|_2 }$
+$L_{direction}=1-c(\Delta z_{full},\Delta z_{upper}+\Delta z_{lower})$
 
 The orthogonality term computes the absolute cosine similarity for each sample along the latent dimension (dim=-1), then averages across a batch of size B:
 
-$L_{ortho} = \frac{1}{B}\sum_{b=1}^{B} \left| \frac{ \Delta z_{upper}^{(b)}\cdot\Delta z_{lower}^{(b)} }{ \|\Delta z_{upper}^{(b)}\|_2 \|\Delta z_{lower}^{(b)}\|_2 } \right|$
+$L_{ortho}=\frac{1}{B}\sum_{b=1}^{B}|c(\Delta z_{upper}^{(b)},\Delta z_{lower}^{(b)})|$
 
 ### Dimensional consistency loss
 
