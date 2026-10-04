@@ -4,7 +4,7 @@
 
 A MetaMotivo humanoid agent is conditioned on a latent vector $z$, which acts as a compact representation of behavioral intent. Proprioceptive observations from a 358-dimensional state space are passed through a backward mapping network to infer the corresponding latent representation.
 
-The projrct studies how this forward-backward representation can preserve useful whole-body behavior while making the upper and lower body components more independent.
+The project studies how this forward-backward representation can preserve useful whole-body behavior while making the upper and lower body components more independent.
 
 ## Method
 
