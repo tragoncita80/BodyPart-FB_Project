@@ -40,6 +40,7 @@ import wandb
 from metamotivo.buffers.buffers import DictBuffer, TrajectoryBuffer
 from metamotivo.fb_cpr import FBcprAgent, FBcprAgentConfig
 from metamotivo.wrappers.humenvbench import RewardWrapper, TrackingWrapper
+from metamotivo_ori.buffers.paired_buffer import PairedTrajectoryBuffer, load_neutral_z_states
 
 if Version(humenv.__version__) < Version("0.1.2"):
     raise RuntimeError("This script requires humenv>=0.1.2")
@@ -93,6 +94,10 @@ class TrainConfig:
     prioritization_min_val: float = 0.5
     prioritization_max_val: float = 5
     prioritization_scale: float = 2
+    use_consistency_loss: bool = False
+    consistency_coef: float = 0.1
+    consistency_batch_size: int = 64
+    neutral_motion: str = ""
 
     # WANDB
     use_wandb: bool = False
@@ -185,7 +190,23 @@ class Workspace:
     def train_online(self) -> None:
         print("Loading expert trajectories")
         expert_buffer = load_expert_trajectories(self.cfg.motions, self.cfg.motions_root, device=self.cfg.buffer_device, sequence_length=self.agent_cfg.model.seq_length)
-
+        if self.cfg.use_consistency_loss:
+            print("Loading paired (full/upper/lower) trajectories for consistency loss")
+            paired_buffer = PairedTrajectoryBuffer(
+                motions_file=self.cfg.motions,
+                motions_root=self.cfg.motions_root,
+                seq_length=self.agent_cfg.model.seq_length,
+                device=self.cfg.buffer_device,
+            )
+            print("Loading neutral pose trajectory")
+            neutral_traj = load_neutral_z_states(
+                neutral_path=self.cfg.neutral_motion,
+                motions_root=self.cfg.motions_root,
+                seq_length=self.agent_cfg.model.seq_length,
+                device=self.cfg.buffer_device,
+            )
+            self.agent.attach_consistency_data(paired_buffer, neutral_traj)
+            
         print("Creating the training environment")
         train_env, mp_info = make_humenv(
             num_envs=self.cfg.online_parallel_envs,
@@ -471,6 +492,9 @@ if __name__ == "__main__":
     agent_config.model.device = config.device
     # misc
     agent_config.train.discount = 0.98
+    agent_config.train.use_consistency_loss = config.use_consistency_loss     # NEW
+    agent_config.train.consistency_coef = config.consistency_coef             # NEW
+    agent_config.train.consistency_batch_size = config.consistency_batch_size # NEW
     agent_config.compile = config.compile
     agent_config.cudagraphs = config.cudagraphs
     env.close()

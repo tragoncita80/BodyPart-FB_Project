@@ -34,6 +34,9 @@ class TrainConfig(FBTrainConfig):
     relabel_ratio: float | None = 1
     grad_penalty_discriminator: float = 10.0
     weight_decay_discriminator: float = 0.0
+    consistency_coef: float = 0.1
+    consistency_batch_size: int = 64
+    use_consistency_loss: bool = False
 
 
 @dataclasses.dataclass
@@ -57,6 +60,13 @@ class FBcprAgent(FBAgent):
         self._model.to(self.cfg.model.device)
         self.setup_training()
         self.setup_compile()
+        self.paired_buffer = None
+        self.neutral_traj = None
+
+    def attach_consistency_data(self, paired_buffer, neutral_traj):
+        """Called from the train script after data is loaded."""
+        self.paired_buffer = paired_buffer
+        self.neutral_traj = neutral_traj
 
     def setup_training(self) -> None:
         super().setup_training()
@@ -213,6 +223,9 @@ class FBcprAgent(FBAgent):
             )
         )
 
+        if self.cfg.train.use_consistency_loss:
+            metrics.update(self.update_consistency())
+        
         with torch.no_grad():
             _soft_update_params(
                 self._forward_map_paramlist,
@@ -335,6 +348,61 @@ class FBcprAgent(FBAgent):
             }
         return output_metrics
 
+    def update_consistency(self) -> Dict[str, torch.Tensor]:
+        """
+        Enforce z_full - z_neutral ≈ (z_upper - z_neutral) + (z_lower - z_neutral)
+        on un-normalized B-averages, so that:
+        - some dimensions of z encode upper-body content
+        - other dimensions encode lower-body content
+        - they are additively decomposable.
+
+        Gradients flow only into the backward map B.
+        """
+        if self.paired_buffer is None or self.neutral_traj is None:
+            return {}
+
+        bs = self.cfg.train.consistency_batch_size
+        triplet = self.paired_buffer.sample(bs)  # dict of (bs, T, obs_dim) on device
+
+        with torch.no_grad(), eval_mode(self._model._obs_normalizer):
+            full_flat    = self._model._obs_normalizer(triplet["full"].reshape(-1, triplet["full"].shape[-1]))
+            upper_flat   = self._model._obs_normalizer(triplet["upper"].reshape(-1, triplet["upper"].shape[-1]))
+            lower_flat   = self._model._obs_normalizer(triplet["lower"].reshape(-1, triplet["lower"].shape[-1]))
+            neutral_flat = self._model._obs_normalizer(self.neutral_traj.expand(bs, -1, -1).reshape(-1, self.neutral_traj.shape[-1]))
+
+        T = triplet["full"].shape[1]
+        # Apply B (gradients enabled), reshape to (bs, T, z_dim), average over time
+        def er_fb(flat):
+            b = self._model._backward_map(flat)            # (bs*T, z_dim)
+            return b.view(bs, T, -1).mean(dim=1)           # (bs, z_dim)
+
+        z_full    = er_fb(full_flat)
+        z_upper   = er_fb(upper_flat)
+        z_lower   = er_fb(lower_flat)
+        z_neutral = er_fb(neutral_flat)
+
+        # Additive decomposition on residuals (un-normalized space)
+        res_full  = z_full  - z_neutral
+        res_upper = z_upper - z_neutral
+        res_lower = z_lower - z_neutral
+        target    = res_upper + res_lower
+
+        consistency_loss = F.mse_loss(res_full, target)
+        total_loss = self.cfg.train.consistency_coef * consistency_loss
+
+        # Optimize B only (and only B has gradients here)
+        self.backward_optimizer.zero_grad(set_to_none=True)
+        total_loss.backward()
+        self.backward_optimizer.step()
+
+        with torch.no_grad():
+            return {
+                "consistency_loss": consistency_loss.detach(),
+                "consistency_res_full_norm":  res_full.norm(dim=-1).mean().detach(),
+                "consistency_res_upper_norm": res_upper.norm(dim=-1).mean().detach(),
+                "consistency_res_lower_norm": res_lower.norm(dim=-1).mean().detach(),
+            }
+    
     def update_actor(
         self,
         obs: torch.Tensor,
